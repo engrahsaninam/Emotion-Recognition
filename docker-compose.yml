@@ -1,0 +1,154 @@
+version: '3.8'
+
+services:
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: recognition-api
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/recognition
+      - LOAD_AUDIO_MODEL=true
+      - LOAD_VIDEO_MODEL=true
+      - LOAD_TEXT_MODEL=true
+    volumes:
+      - ./models:/app/models
+      - upload_data:/app/uploads
+      - output_data:/app/outputs
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Celery Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: recognition-worker
+    command: celery -A api.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/recognition
+    volumes:
+      - ./models:/app/models
+      - upload_data:/app/uploads
+      - output_data:/app/outputs
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Celery Beat (Scheduler)
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: recognition-beat
+    command: celery -A api.celery_app beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: recognition-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Redis (Message Broker & Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: recognition-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: recognition-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=recognition
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Flower (Celery Monitoring)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: recognition-flower
+    command: celery -A api.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - worker
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy (Production)
+  nginx:
+    image: nginx:alpine
+    container_name: recognition-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+      - frontend
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  redis_data:
+  postgres_data:
+  upload_data:
+  output_data:
+
+networks:
+  default:
+    name: recognition-network
+

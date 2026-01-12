@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv
+.venv
+env
+.env
+*.egg-info
+dist
+build
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Node
+node_modules
+.next
+.npm
+
+# Test
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.nox
+
+# Documentation
+docs/_build
+*.md
+!README.md
+
+# Logs
+*.log
+logs
+
+# Temp
+tmp
+temp
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models (download separately)
+*.h5
+*.pth
+*.pt
+*.onnx
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+
+# Output directories
+Output
+Input
+uploads
+outputs
+
